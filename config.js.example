@@ -1,4 +1,0 @@
-module.exports = {
-    'token': 'INSERT_SECRET_HERE',
-    'prefix': '!'
-};
