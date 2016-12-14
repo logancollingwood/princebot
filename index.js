@@ -10,4 +10,6 @@ controllers.set(app);
 
 app.listen(3000, function () {
     console.log("Princebot listening on 3000");
+    console.log("CONFIG");
+    console.log(require('./config'));
 });

@@ -26,3 +26,11 @@ exports.isDefined = function(obj) {
     }
     return false
 }
+
+exports.replyClean = function(message, str) {
+    const deleteTimeout = 15000;
+    message.reply(str)
+        .then( msg => {
+            msg.delete(deleteTimeout);
+    }).catch(console.log)
+}
