@@ -1,4 +1,5 @@
 module.exports = {
     'token': 'INSERT_SECRET_HERE',
-    'prefix': '!'
+    'prefix': '!',
+    'deleteTimeout': '5000' // an amount to wait before cleaning up sent messages in ms
 };
