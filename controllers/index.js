@@ -1,4 +1,4 @@
-const apiRoutes = require('./api.js');
+const apiRoutes = require('./api/routes.js');
 const webRoutes = require('./web/routes.js');
 
 module.exports.set = function(app) {

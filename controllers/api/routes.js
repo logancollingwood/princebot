@@ -7,5 +7,5 @@ module.exports.set = function(app) {
 
 	app.get(apiBase + 'connect/:inviteLink', function(req,res) {
 	   res.send(req.params);
-    	});
+    });
 }

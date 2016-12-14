@@ -1,30 +1,15 @@
-var ytdl = require('ytdl-core');
+const musicPlayer = require('./music/musicPlayer');
 
-let commandMap = new Map();
+const commandMap = new Map();
 
 
-let pong = function(channel, parsed) {
+const pong = function(bot, message) {
     console.log("Handling pong command");
     channel.sendMessage("pong");
 };
 
 
-let playTrack = function(channel, parsed) {
-    // command comes in as play [link]
-    if (parsed.args.length > 1) {
-        channel.sendMessage("Play command accepts a single argument, which is a youtube URL" +
-            "formatted like so: " + "https://www.youtube.com/watch?v=someYoutubeId");
-        return;
-    }
-
-    let url = parsed.args[0];
-    console.log("attempting to play " + url);
-
-
-};
-
-
 commandMap.set("ping", pong);
-commandMap.set("play", playTrack);
+commandMap.set("play", musicPlayer.playTrack);
 
 module.exports.commandMap = commandMap;
