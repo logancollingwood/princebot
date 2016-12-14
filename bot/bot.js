@@ -36,5 +36,6 @@ bot.on("guildMemberAdd", (member) => {
     member.channel.sendMessage("Welcome to the server, " + member.name +  ". Please read the pinned posts!");
 });
 
+console.log("AUTH with token : " + Config.token);
 // log our bot in
 bot.login(Config.token);

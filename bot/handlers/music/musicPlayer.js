@@ -17,11 +17,18 @@ let playTrack = function (bot, message) {
 
     message.voiceChannel
     const voiceChannel = message.member.voiceChannel;
-    console.log(voiceChannel);
+    console.log(Helpers.isDefined(voiceChannel));
+
+    if (!Helpers.isDefined(voiceChannel)) {
+        message.reply("Please join a voice channel before queueing a song.");
+        return;
+    }
+
     voiceChannel.join()
     .then(connection => {
-        const stream = YTDL('https://www.youtube.com/watch?v=XAWgeLF9EVQ', {filter: 'audioonly'})
-        console.log("Able to grab ytdl stream");
+        const stream = YTDL(url, {filter: 'audioonly'})
+        console.log("Successfully grapped url: " + url);
+        const streamOptions = { seek: 0, volume: 1, passes: 1 };
         const dispatcher = connection.playStream(stream, streamOptions);
     })
     .catch(console.error);

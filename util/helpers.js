@@ -1,6 +1,6 @@
 const Config = require('../config');
 
-const parseContent = function(content) {
+exports.parseContent = function(content) {
     let indexOfSpace = content.indexOf(" ");
     let command = "";
     let args = [];
@@ -19,4 +19,10 @@ const parseContent = function(content) {
     }
 };
 
-module.exports.parseContent = parseContent;
+exports.isDefined = function(obj) {
+    if ( typeof obj !== 'undefined' && obj )
+    {
+      return true;
+    }
+    return false;
+}
