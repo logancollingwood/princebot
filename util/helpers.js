@@ -24,5 +24,5 @@ exports.isDefined = function(obj) {
     {
       return true;
     }
-    return false;
+    return false
 }
