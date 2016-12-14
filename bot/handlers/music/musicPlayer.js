@@ -2,7 +2,7 @@ const YTDL = require('ytdl-core');
 const Helpers = require('../../../util/helpers');
 
 
-let playTrack = function (bot, message) {
+exports.playTrack = function (bot, message) {
     let parsed = Helpers.parseContent(message.content);
     let channel = message.channel;
     // command comes in as play [link]
@@ -27,12 +27,8 @@ let playTrack = function (bot, message) {
     voiceChannel.join()
     .then(connection => {
         const stream = YTDL(url, {filter: 'audioonly'})
-        console.log("Successfully grapped url: " + url);
         const streamOptions = { seek: 0, volume: 1, passes: 1 };
         const dispatcher = connection.playStream(stream, streamOptions);
     })
     .catch(console.error);
 };
-
-
-module.exports.playTrack = playTrack;
