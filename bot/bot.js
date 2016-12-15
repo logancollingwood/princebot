@@ -1,8 +1,6 @@
 // import the discord.js module
 const Discord = require('discord.js');
 const Config = require('../config');
-const commandMap = require('./handlers/commandMap').commandMap;
-const Helpers = require('../util/helpers');
 const player = require('./handlers/music/index.js');
 
 // create an instance of a Discord Client, and call it bot

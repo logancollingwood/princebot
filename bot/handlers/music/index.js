@@ -1,6 +1,7 @@
 const YoutubeDL = require('ytdl-core');
 const Request = require('request');
 const Config = require('../../../config');
+const TextHandler = require('../text/textCommands');
 
 /*
  * Takes a discord.js client and turns it into a music bot.
@@ -46,6 +47,11 @@ module.exports = function(client, options) {
                 case 'queue': return queue(msg, suffix);
                 case 'pause': return pause(msg, suffix);
                 case 'resume': return resume(msg, suffix);
+                case 'ping': return TextHandler.pong(msg);
+                case 'roll': return TextHandler.rollDice(msg);
+                case 'lady': return TextHandler.cabDriver(msg);
+                case 'clean': return TextHandler.cleanup(msg, suffix);
+                case 'lol': return TextHandler.lol(msg);
             }
         }
     });
