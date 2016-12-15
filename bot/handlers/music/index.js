@@ -40,6 +40,7 @@ module.exports = function(client, options) {
             const command = message.split(/[ \n]/)[0].substring(PREFIX.length).toLowerCase().trim();
             const suffix = message.substring(PREFIX.length + command.length).trim();
 
+            console.log(`Processed command ${command} with suffix ${suffix}`);
             // Process the commands.
             switch (command) {
                 case 'play': return play(msg, suffix);
