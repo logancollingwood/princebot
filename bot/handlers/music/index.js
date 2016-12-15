@@ -1,4 +1,4 @@
-const YoutubeDL = require('youtube-dl');
+const YoutubeDL = require('ytdl-core');
 const Request = require('request');
 const Config = require('../../../config');
 
