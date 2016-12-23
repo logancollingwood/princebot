@@ -28,7 +28,9 @@ exports.cabDriver = function(message) {
 };
 
 exports.cleanup = function(message, args) {
-    if (args.length > 1 || args.length == 0) {
+    let argsArr = args.split(' ');
+    let deleteCount = argsArr[0];
+    if (argsArr.length > 1 || argsArr.length == 0) {
         message.reply("Cleanup expects a single argument, the number of messages to clean")
             .then(reply => {
                 reply.delete(Config.deleteTimeout);
@@ -36,7 +38,16 @@ exports.cleanup = function(message, args) {
             });
         return;
     }
-    message.channel.bulkDelete(args.first());
+    if (deleteCount > Config.maxDelete) {
+        message.reply("The bot is configured to not allow deleting more than " + Config.maxDelete + " messages at a time")
+            .then(reply => {
+                reply.delete(Config.deleteTimeout);
+                message.delete(Config.deleteTimeout);
+            });
+        return;
+    }
+    message.channel.bulkDelete(deleteCount);
+    console.log(`Successfully deleted ${deleteCount} messages from channel ${message.channel.name}`)
 };
 
 exports.lol  = function(message) {

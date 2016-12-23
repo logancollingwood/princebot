@@ -2,6 +2,8 @@ const YoutubeDL = require('ytdl-core');
 const Request = require('request');
 const Config = require('../../../config');
 const TextHandler = require('../text/textCommands');
+const util = require('util');
+const logger = require('../../../util/logger');
 
 /*
  * Takes a discord.js client and turns it into a music bot.
@@ -18,6 +20,7 @@ module.exports = function(client, options) {
     let GLOBAL = (options && options.global) || false;
     let MAX_QUEUE_SIZE = (options && options.maxQueueSize) || 20;
 
+    logger.log("Setting up queues");
     // Create an object of queues.
     let queues = {};
 
@@ -40,7 +43,7 @@ module.exports = function(client, options) {
             const command = message.split(/[ \n]/)[0].substring(PREFIX.length).toLowerCase().trim();
             const suffix = message.substring(PREFIX.length + command.length).trim();
 
-            console.log(`Processed command ${command} with suffix ${suffix}`);
+            logger.log(`Processed command ${command} with suffix ${suffix}`);
             // Process the commands.
             switch (command) {
                 case 'play': return play(msg, suffix);
@@ -105,26 +108,31 @@ module.exports = function(client, options) {
             if (!suffix.toLowerCase().startsWith('http')) {
                 suffix = 'gvsearch1:' + suffix;
             }
-
-            // Get the video info from youtube-dl.
-            YoutubeDL.getInfo(suffix, ['-q', '--no-warnings', '--force-ipv4'], (err, info) => {
-                // Verify the info.
-                if (err || info.format_id === undefined || info.format_id.startsWith('0')) {
-                    return response.edit(wrap('Invalid video!'))
+            logger.log(`suffix + ${suffix}`);
+            let video = YoutubeDL(suffix);
+            video.on('error', error => {
+                return response.edit(wrap('Invalid video!'))
                         .then(response => {
                             response.delete(Config.deleteTimeout);
                             msg.delete(Config.deleteTimeout);
                         });
-                }
+            });
 
+            video.on('info', info => {
                 // Queue the video.
                 response.edit(wrap('Queued: ' + info.title)).then(() => {
-                    queue.push(info);
+                    logger.log(`url enqueued ${info.url}`);
+                    queue.push({'stream': video, 'info': info});
+                    logger.log(client.voiceConnections);
 
                     // Play if only one element in the queue.
-                    if (queue.length === 1) executeQueue(msg, queue);
+                    if (queue.length === 1) {
+                        logger.log("executing queue");
+                        executeQueue(msg, queue, null);
+                    }
+                    response.delete(Config.deleteTimeout);
                 }).catch(() => {});
-            });
+            })
         }).catch(() => {});
     }
 
@@ -236,85 +244,86 @@ module.exports = function(client, options) {
      * @param msg Original message.
      * @param queue The queue.
      */
-    function executeQueue(msg, queue) {
+    function executeQueue(msg, queue, voiceConnection) {
+        logger.log(voiceConnection);
         // If the queue is empty, finish.
         if (queue.length === 0) {
-            replyAndDelete(msg, 'Music queue finished');
+            logger.log("Queue is empty, finishing");
+            // replyAndDelete(msg, 'Music queue finished');
 
-            // Leave the voice channel.
-            const voiceConnection = client.voiceConnections.get('server', msg.guild);
             if (voiceConnection !== null) {
                 voiceConnection.disconnect();
             }
+            return;
         }
 
         new Promise((resolve, reject) => {
-            // Join the voice channel if not already in one.
-            const voiceConnection = client.voiceConnections.get('server', msg.guild);
+            logger.log(`Initiating promise for queue playing in guild: ${msg.guild}`);
+
+           
             if (voiceConnection === null) {
+                logger.log(`null voiceConnection in guild ${msg.guild}`);
                 let vc = msg.member.voiceChannel;
+                logger.log(`user in vc ${vc}`);
                 // Check if the user is in a voice channel.
                 if (vc) {
-                    vc.join.then(connection => {
-                        resolve(connection);
-                    }).catch(() => {});
+                    logger.log(`attempting to join vc ${vc}`)
+                    vc.join()
+                        .then(connection => {
+                            logger.log(`joined vc ${vc}`);
+                            resolve(connection);
+                        }).catch(console.error);
                 } else {
+                    logger.log(`unable to join vc ${vc}`);
                     // Otherwise, clear the queue and do nothing.
                     queue.splice(0, queue.length);
                     replyAndDelete(msg, "You are no longer in a voice channel");
                     reject();
                 }
             } else {
+                logger.log(`voiceConnection is not null ${voiceConnection}`)
                 resolve(voiceConnection);
             }
         })
         .then(connection => {
             // Get the first item in the queue.
             const video = queue[0];
+            const stream = video.stream;
+            const info = video.info;
             const streamOpts = {filter : 'audioonly'};
+            logger.log(`playing video ${info} by ${info.author}`);
             // Play the video.
-            msg.reply(msg, wrap('Now Playing: ' + video.title))
-                .then(() => {
-                    connection.playStream(Request(video.url), streamOpts).then(intent => {
-                        // Catch errors in the connection.
-                        connection.player.dispatcher.on('error', () => {
-                            // Skip to the next song.
-                            queue.shift();
-                            executeQueue(msg, queue);
-                        });
-                        connection.player.dispatcher.on('error', () => {
-                            // Skip to the next song.
-                            queue.shift();
-                            executeQueue(msg, queue);
-                        });
-
-                        // Catch all errors.
-                        intent.on('error', () => {
-                            // Skip to the next song.
-                            queue.shift();
-                            executeQueue(msg, queue);
-                        });
-
-                        // Catch the end event.
-                        intent.on('end', () => {
-                            // Wait a second.
-                            setTimeout(() => {
-                                // Remove the song from the queue.
-                                queue.shift();
-
-                                // Play the next song in the queue.
-                                executeQueue(msg, queue);
-                            }, 1000);
-                        });
-                    }).catch(() => {});
-                })
-                .then(reply => {
+            msg.reply(wrap('Now Playing: ' + info.title))
+            .then((response) => {
+                logger.log(`Playing stream ${info.title} in connection ${connection.channel}`);
+                let dispatcher = connection.playStream(stream, streamOpts)
+                logger.log(`connection is playing stream`);
+                // Catch errors in the connection.
+                dispatcher.on('error', () => {
+                    // Skip to the next song.
+                    queue.shift();
                     reply.delete(Config.deleteTimeout);
                     msg.delete(Config.deleteTimeout);
-                })
-                .catch(() => {});
-        })
-        .catch(() => {});
+                    executeQueue(msg, queue, connection);
+                });
+
+                // Catch the end event.
+                dispatcher.on('end', () => {
+                    logger.log("Song ended, executing next in queue");
+                    // Wait a second.
+                    setTimeout(() => {
+                        // Remove the song from the queue.
+                        queue.shift();
+
+                        // Play the next song in the queue.
+                        executeQueue(msg, queue, connection);
+                    }, 1000);
+                });
+                response.delete(Config.deleteTimeout);
+                msg.delete(Config.deleteTimeout);
+            })
+            .catch(console.error);
+        }).catch(console.error);
     }
 };
 

@@ -1,6 +1,10 @@
 "use strict";
 require('babel-register');
-require('./bot/bot');
+
+
+let musicBot = require('./bot/bot');
+
+musicBot.init();
 
 const express = require('express');
 const app = express();

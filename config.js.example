@@ -1,5 +1,7 @@
 module.exports = {
     'token': 'INSERT_SECRET_HERE',
+    'botChannel': 'bot-commands',
     'prefix': '!',
-    'deleteTimeout': '5000' // an amount to wait before cleaning up sent messages in ms
+    'deleteTimeout': 5000, // delete timeout in ms
+    'maxDelete': 100
 };
