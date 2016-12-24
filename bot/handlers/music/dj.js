@@ -23,10 +23,16 @@ module.exports = function(client, options) {
     logger.log("Setting up queues");
     // Create an object of queues.
     let queues = {};
+    let isAvatarSet = false;
 
     // Catch message events.
     client.on('message', msg => {
         if(msg.author.bot) return;
+        if (!isAvatarSet) {
+            logger.log("Setting up the prince icon");
+            client.user.setAvatar('static/prince.jpg')
+            .then(isAvatarSet = true);
+        }
 
         if (msg.channel.name !== Config.botChannel) {
             replyAndDelete(msg, "This bot only accepts commands in the " + Config.botChannel + " channel. " +
@@ -59,7 +65,6 @@ module.exports = function(client, options) {
             }
         }
     });
-
     /*
      * Gets a queue.
      *
@@ -103,7 +108,8 @@ module.exports = function(client, options) {
         }
 
         // Get the video information.
-        msg.reply(wrap('Searching...')).then(response => {
+        msg.channel.sendMessage(wrap('Searching for ' + suffix))
+        .then(response => {
             // If the suffix doesn't start with 'http', assume it's a search.
             if (!suffix.toLowerCase().startsWith('http')) {
                 suffix = 'gvsearch1:' + suffix;
@@ -132,8 +138,11 @@ module.exports = function(client, options) {
                     }
                     response.delete(Config.deleteTimeout);
                 }).catch(() => {});
-            })
-        }).catch(() => {});
+            });
+            response.delete(Config.deleteTimeout).catch(err => errorGraceful(err, msg));
+            msg.delete(Config.deleteTimeout).catch(err => errorGraceful(err, msg));
+        })
+        .catch(err => errorGraceful(err, msg));
     }
 
     /*
@@ -144,7 +153,7 @@ module.exports = function(client, options) {
      */
     function skip(msg, suffix) {
         // Get the voice connection.
-        const voiceConnection = client.voiceConnections.get('server', msg.guild);
+        let voiceConnection = msg.member.voiceChannel;
         if (voiceConnection === null) {
             replyAndDelete(msg, 'No music currently playing');
             return;
@@ -180,22 +189,37 @@ module.exports = function(client, options) {
     function queue(msg, suffix) {
         // Get the queue.
         const queue = getQueue(msg.guild.id);
+        let queueStatus = '';
+        let text = '';
+        if (queue.length != 0) {
+            const video = queue[0];
+            const stream = video.stream;
+            const info = video.info;
+            const streamOpts = {filter : 'audioonly'};
+            logger.log(`playing video ${info.title} by ${info.author}`);
+            
+            // Get the queue text.
+            text = queue.map((video) => 
+                (`${video.info.title} by ${video.info.author}`)
+            ).join('\n');
 
-        // Get the queue text.
-        const text = queue.map((video, index) => (
-            (index + 1) + ': ' + video.title
-        )).join('\n');
-
-        // Get the status of the queue.
-        let queueStatus = 'Stopped';
-        const voiceConnection = client.voiceConnections.get('server', msg.guild.id);
-        if (voiceConnection !== null) {
-            let dispatcher = voiceConnection.player.dispatcher;
-            queueStatus = dispatcher.paused ? 'Paused' : 'Playing';
+            // Get the status of the queue.
+            let voiceConnection = msg.member.voiceChannel.connection;
+            if (voiceConnection !== null) {
+                let dispatcher = voiceConnection.player.dispatcher;
+                if (dispatcher === null) {
+                    queueStatus = 'Not playing';
+                } else {
+                    queueStatus = dispatcher.paused ? 'Paused' : 'Playing';
+                }
+            }
+        } else {
+            queueStatus = `Empty`;
+            text = ``;
         }
 
         // Send the queue and status.
-        replyAndDelete(msg, 'Queue (' + queueStatus + '):\n' + text);
+        replyAndDelete(msg, 'Queue (' + queueStatus + '):\n' + text, Config.deleteTimeout * 3);
     }
 
     /*
@@ -206,16 +230,19 @@ module.exports = function(client, options) {
      */
     function pause(msg, suffix) {
         // Get the voice connection.
-        const voiceConnection = client.voiceConnections.get('server', msg.guild.id);
+        let voiceConnection = msg.member.voiceChannel.connection;
         if (voiceConnection === null) {
             replyAndDelete(msg, 'No music being played');
             return;
         }
 
         // Pause.
-        replyAndDelete(msg, 'Playback paused');
         let dispatcher = voiceConnection.player.dispatcher;
-        if (voiceConnection.speaking) dispatcher.pause();
+        if (voiceConnection.speaking) {
+            logger.log(`Pausing dispatcher ${dispatcher}`);
+            dispatcher.pause();
+            replyAndDelete(msg, 'Playback paused', Config.deleteTimeout * 2);
+        }
     }
 
     /*
@@ -226,16 +253,19 @@ module.exports = function(client, options) {
      */
     function resume(msg, suffix) {
         // Get the voice connection.
-        const voiceConnection = client.voiceConnections.get('server', msg.server);
+        let voiceConnection = msg.member.voiceChannel.connection;
         if (voiceConnection === null) {
             replyAndDelete(msg, 'No music being played');
             return;
         }
 
-        // Resume.
-        replyAndDelete(msg, 'Playback resumed');
+        // Pause.
         let dispatcher = voiceConnection.player.dispatcher;
-        if (voiceConnection.speaking) dispatcher.resume();
+        if (!voiceConnection.speaking) {
+            logger.log(`Resuming dispatcher ${dispatcher}`);
+            dispatcher.resume();
+            replyAndDelete(msg, 'Playback resumed', Config.deleteTimeout * 2);
+        }
     }
 
     /*
@@ -249,7 +279,7 @@ module.exports = function(client, options) {
         // If the queue is empty, finish.
         if (queue.length === 0) {
             logger.log("Queue is empty, finishing");
-            // replyAndDelete(msg, 'Music queue finished');
+            replyAndDelete(msg, 'Music queue finished');
 
             if (voiceConnection !== null) {
                 voiceConnection.disconnect();
@@ -293,11 +323,12 @@ module.exports = function(client, options) {
             const streamOpts = {filter : 'audioonly'};
             logger.log(`playing video ${info} by ${info.author}`);
             // Play the video.
-            msg.reply(wrap('Now Playing: ' + info.title))
+            msg.channel.sendMessage(wrap('Now Playing: ' + info.title + ' in ' + connection.channel.name))
             .then((response) => {
-                logger.log(`Playing stream ${info.title} in connection ${connection.channel}`);
+                logger.log(`Playing stream ${info.title} in connection ${connection.channel.name}`);
                 let dispatcher = connection.playStream(stream, streamOpts)
                 logger.log(`connection is playing stream`);
+                setGame(client, 'in: ' + connection.channel.name + ', ' + info.title);
                 // Catch errors in the connection.
                 dispatcher.on('error', () => {
                     // Skip to the next song.
@@ -338,10 +369,28 @@ function wrap(text) {
     return '```\n' + text.replace(/`/g, '`' + String.fromCharCode(8203)) + '\n```';
 }
 
-function replyAndDelete(msg, replyString) {
-    msg.reply(wrap(replyString))
+function replyAndDelete(msg, replyString, deleteTimer) {
+    if (deleteTimer == null) {
+        deleteTimer = Config.deleteTimeout;
+    }
+    msg.channel.sendMessage(wrap(replyString))
         .then(reply => {
-            reply.delete(Config.deleteTimeout);
-            msg.delete(Config.deleteTimeout);
+            reply.delete(deleteTimer);
+            msg.delete(deleteTimer);
         });
+}
+function setGame(client, status) {
+    logger.log(`Setting status to ${status}`);
+    logger.log(client.user.username);
+    client.user.setGame("");
+    client.user.setGame(status);
+}
+
+function errorGraceful(err, msg) {
+    logger.error(err);
+    msg.reply('Application crashed').then(response => {
+        response.delete(Config.deleteTimeout);
+        msg.delete(Config.deleteTimeout);
+    }).catch(errorGraceful(err, msg));
+    msg.delete(Config.deleteTimeout);
 }

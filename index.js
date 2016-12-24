@@ -1,5 +1,7 @@
 "use strict";
 require('babel-register');
+let LOGGER = require("./util/logger");
+console.log(require('./config'));
 
 
 let musicBot = require('./bot/bot');
@@ -13,7 +15,5 @@ const controllers = require('./controllers');
 controllers.set(app);
 
 app.listen(3000, function () {
-    console.log("Princebot listening on 3000");
-    console.log("CONFIG");
-    console.log(require('./config'));
+    LOGGER.log("Princebot listening on 3000");
 });
