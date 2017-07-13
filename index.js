@@ -1,5 +1,7 @@
 "use strict";
-require('babel-register');
+require('babel-register')({
+    retainLines: true
+});
 let LOGGER = require("./util/logger");
 console.log(require('./config'));
 

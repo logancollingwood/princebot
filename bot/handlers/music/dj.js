@@ -1,4 +1,4 @@
-const YoutubeDL = require('ytdl-core');
+const YoutubeDL = require('youtube-dl');
 const Request = require('request');
 const Config = require('../../../config');
 const TextHandler = require('../text/textCommands');
@@ -23,6 +23,7 @@ module.exports = function(client, options) {
     logger.log("Setting up queues");
     // Create an object of queues.
     let queues = {};
+    let queuesInfo = {};
     let isAvatarSet = false;
 
     // Catch message events.
@@ -80,6 +81,20 @@ module.exports = function(client, options) {
     }
 
     /*
+     * Gets a queue.
+     *
+     * @param server The server id.
+     */
+    function getInfoQueue(server) {
+        // Check if global queues are enabled.
+        if (GLOBAL) server = '_'; // Change to global queue.
+
+        // Return the queue.
+        if (!queuesInfo[server]) queuesInfo[server] = [];
+        return queuesInfo[server];
+    }
+
+    /*
      * Play command.
      *
      * @param msg Original message.
@@ -87,7 +102,7 @@ module.exports = function(client, options) {
      */
     function play(msg, suffix) {
         // Make sure the user is in a voice channel.
-        if (msg.author.voiceChannel === null) {
+        if (msg.member.voiceChannel === undefined) {
             replyAndDelete(msg, 'You\'re not in a voice channel.');
             return;
         }
@@ -99,7 +114,8 @@ module.exports = function(client, options) {
         }
 
         // Get the queue.
-        const queue = getQueue(msg.guild.id);
+        const videoQueue = getQueue(msg.guild.id);
+        const infoQueue = getInfoQueue(msg.guild.id);
 
         // Check if the queue has reached its maximum size.
         if (queue.length >= MAX_QUEUE_SIZE) {
@@ -108,41 +124,45 @@ module.exports = function(client, options) {
         }
 
         // Get the video information.
-        msg.channel.sendMessage(wrap('Searching for ' + suffix))
+        msg.channel.sendMessage(wrap(`Playing: ${suffix}`))
         .then(response => {
             // If the suffix doesn't start with 'http', assume it's a search.
-            if (!suffix.toLowerCase().startsWith('http')) {
-                suffix = 'gvsearch1:' + suffix;
-            }
-            logger.log(`suffix + ${suffix}`);
-            let video = YoutubeDL(suffix);
-            video.on('error', error => {
-                return response.edit(wrap('Invalid video!'))
-                        .then(response => {
-                            response.delete(Config.deleteTimeout);
-                            msg.delete(Config.deleteTimeout);
-                        });
-            });
+			if (!suffix.toLowerCase().startsWith('http')) {
+				suffix = 'gvsearch1:' + suffix;
+			}
 
-            video.on('info', info => {
+			// Get the video info from youtube-dl.
+			YoutubeDL.getInfo(suffix, ['-q', '--no-warnings', '--force-ipv4'], (err, info) => {
+				// Verify the info.
+				if (err || info.format_id === undefined || info.format_id.startsWith('0')) {
+					return replyAndDelete(response, wrap('Invalid video!'));
+                }
+                
+                let video = YoutubeDL(suffix, ['-q', '--no-warnings', '--force-ipv4']);
+
                 // Queue the video.
-                response.edit(wrap('Queued: ' + info.title)).then(() => {
-                    logger.log(`url enqueued ${info.url}`);
-                    queue.push({'stream': video, 'info': info});
-                    logger.log(client.voiceConnections);
-
+                infoQueue.push(info);
+                videoQueue.push(video);
+                if (videoQueue.length == 1) {
                     // Play if only one element in the queue.
-                    if (queue.length === 1) {
-                        logger.log("executing queue");
-                        executeQueue(msg, queue, null);
-                    }
-                    response.delete(Config.deleteTimeout);
-                }).catch(() => {});
+                    // console.log(msg.member);
+                    let voiceChannel = msg.member.voiceChannel;
+                    voiceChannel.join()
+                        .then(connection => {
+                            if (videoQueue.length === 1) executeQueue(msg, videoQueue, infoQueue, connection);
+                        }).catch(console.error);
+                } else {
+                    let queueText = infoQueue.map((video) => 
+                        (`${video.title}`)
+                    ).join('\n');
+                    replyAndDelete(msg, `Queued up ${info.title}. \n\nCurrent Queue:\n\n${queueText}`);
+                }
+				
             });
-            response.delete(Config.deleteTimeout).catch(err => errorGraceful(err, msg));
-            msg.delete(Config.deleteTimeout).catch(err => errorGraceful(err, msg));
-        })
-        .catch(err => errorGraceful(err, msg));
+            response.delete(Config.deleteTimeout);
+		}).catch(() => {
+            response.delete(Config.deleteTimeout);
+        });
     }
 
     /*
@@ -153,7 +173,7 @@ module.exports = function(client, options) {
      */
     function skip(msg, suffix) {
         // Get the voice connection.
-        let voiceConnection = msg.member.voiceChannel;
+        let voiceConnection = msg.member.voiceChannel.connection;
         if (voiceConnection === null) {
             replyAndDelete(msg, 'No music currently playing');
             return;
@@ -188,19 +208,17 @@ module.exports = function(client, options) {
      */
     function queue(msg, suffix) {
         // Get the queue.
-        const queue = getQueue(msg.guild.id);
+        const infoQueue = getInfoQueue(msg.guild.id);
         let queueStatus = '';
         let text = '';
-        if (queue.length != 0) {
-            const video = queue[0];
-            const stream = video.stream;
-            const info = video.info;
+        if (infoQueue.length != 0) {
+            const videoInfo = infoQueue[0];
             const streamOpts = {filter : 'audioonly'};
-            logger.log(`playing video ${info.title} by ${info.author}`);
-            
+            logger.log(`playing video ${videoInfo.title}`);
+
             // Get the queue text.
-            text = queue.map((video) => 
-                (`${video.info.title} by ${video.info.author}`)
+            text = infoQueue.map((video) => 
+                (`${video.title}`)
             ).join('\n');
 
             // Get the status of the queue.
@@ -219,7 +237,7 @@ module.exports = function(client, options) {
         }
 
         // Send the queue and status.
-        replyAndDelete(msg, 'Queue (' + queueStatus + '):\n' + text, Config.deleteTimeout * 3);
+        replyAndDelete(msg, 'Current Queue (' + queueStatus + '):\n\n' + text, Config.deleteTimeout * 3);
     }
 
     /*
@@ -274,14 +292,14 @@ module.exports = function(client, options) {
      * @param msg Original message.
      * @param queue The queue.
      */
-    function executeQueue(msg, queue, voiceConnection) {
-        logger.log(voiceConnection);
+    function executeQueue(msg, queue, infoQueue, voiceConnection) {
+        console.log("hello from ${voiceChannel}");
         // If the queue is empty, finish.
         if (queue.length === 0) {
             logger.log("Queue is empty, finishing");
             replyAndDelete(msg, 'Music queue finished');
 
-            if (voiceConnection !== null) {
+            if (voiceConnection !== null || voiceConnection !== undefined) {
                 voiceConnection.disconnect();
             }
             return;
@@ -289,27 +307,10 @@ module.exports = function(client, options) {
 
         new Promise((resolve, reject) => {
             logger.log(`Initiating promise for queue playing in guild: ${msg.guild}`);
-
-           
-            if (voiceConnection === null) {
+            
+            if (voiceConnection === undefined || voiceConnection === null) {
                 logger.log(`null voiceConnection in guild ${msg.guild}`);
-                let vc = msg.member.voiceChannel;
-                logger.log(`user in vc ${vc}`);
-                // Check if the user is in a voice channel.
-                if (vc) {
-                    logger.log(`attempting to join vc ${vc}`)
-                    vc.join()
-                        .then(connection => {
-                            logger.log(`joined vc ${vc}`);
-                            resolve(connection);
-                        }).catch(console.error);
-                } else {
-                    logger.log(`unable to join vc ${vc}`);
-                    // Otherwise, clear the queue and do nothing.
-                    queue.splice(0, queue.length);
-                    replyAndDelete(msg, "You are no longer in a voice channel");
-                    reject();
-                }
+                reject();
             } else {
                 logger.log(`voiceConnection is not null ${voiceConnection}`)
                 resolve(voiceConnection);
@@ -318,17 +319,18 @@ module.exports = function(client, options) {
         .then(connection => {
             // Get the first item in the queue.
             const video = queue[0];
-            const stream = video.stream;
-            const info = video.info;
+            const videoInfo = infoQueue[0];
             const streamOpts = {filter : 'audioonly'};
-            logger.log(`playing video ${info} by ${info.author}`);
+            // console.log(connection);
             // Play the video.
-            msg.channel.sendMessage(wrap('Now Playing: ' + info.title + ' in ' + connection.channel.name))
+            const playingInChannel = msg.member.voiceChannel.name;
+            const title = videoInfo.title;
+            msg.channel.sendMessage(wrap(`Now Playing: ${title} in ${playingInChannel}`))
             .then((response) => {
-                logger.log(`Playing stream ${info.title} in connection ${connection.channel.name}`);
-                let dispatcher = connection.playStream(stream, streamOpts)
+                logger.log(`Playing stream ${title} in connection ${playingInChannel}`);
+                let dispatcher = connection.playStream(video, streamOpts)
                 logger.log(`connection is playing stream`);
-                setGame(client, 'in: ' + connection.channel.name + ', ' + info.title);
+                setGame(client, 'in: ' + msg.member.voiceChannel.name + ', ' + videoInfo.title);
                 // Catch errors in the connection.
                 dispatcher.on('error', () => {
                     // Skip to the next song.
@@ -345,6 +347,7 @@ module.exports = function(client, options) {
                     setTimeout(() => {
                         // Remove the song from the queue.
                         queue.shift();
+                        console.log(queue);
 
                         // Play the next song in the queue.
                         executeQueue(msg, queue, connection);
@@ -391,6 +394,6 @@ function errorGraceful(err, msg) {
     msg.reply('Application crashed').then(response => {
         response.delete(Config.deleteTimeout);
         msg.delete(Config.deleteTimeout);
-    }).catch(errorGraceful(err, msg));
+    })
     msg.delete(Config.deleteTimeout);
 }
