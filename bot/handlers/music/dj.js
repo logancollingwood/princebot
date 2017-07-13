@@ -25,15 +25,15 @@ module.exports = function(client, options) {
     let queues = {};
     let queuesInfo = {};
     let isAvatarSet = false;
+    if (!isAvatarSet) {
+        logger.log("Setting up the prince icon");
+        client.user.setAvatar('static/prince.jpg')
+        .then(isAvatarSet = true);
+    }
 
     // Catch message events.
     client.on('message', msg => {
         if(msg.author.bot) return;
-        if (!isAvatarSet) {
-            logger.log("Setting up the prince icon");
-            client.user.setAvatar('static/prince.jpg')
-            .then(isAvatarSet = true);
-        }
 
         if (msg.channel.name !== Config.botChannel) {
             replyAndDelete(msg, "This bot only accepts commands in the " + Config.botChannel + " channel. " +
@@ -54,6 +54,7 @@ module.exports = function(client, options) {
             // Process the commands.
             switch (command) {
                 case 'play': return play(msg, suffix);
+                case 'np': return np(msg);
                 case 'skip': return skip(msg, suffix);
                 case 'queue': return queue(msg, suffix);
                 case 'pause': return pause(msg, suffix);
@@ -94,6 +95,19 @@ module.exports = function(client, options) {
         return queuesInfo[server];
     }
 
+    function np(msg) {
+        const infoQueue = getInfoQueue(msg.guild.id);
+        let voiceConnection = msg.member.voiceChannel.connection;
+        if (voiceConnection === null || voiceConnection.player.dispatcher === null) {
+                replyAndDelete(msg, `Nothing currently being played`);
+        } else {
+            if (infoQueue.length >= 1) {
+                let info = infoQueue[0];
+                replyAndDelete(msg, `Now Playing: ${info.title}`);
+            }
+        }
+    }
+
     /*
      * Play command.
      *
@@ -124,7 +138,7 @@ module.exports = function(client, options) {
         }
 
         // Get the video information.
-        msg.channel.sendMessage(wrap(`Playing: ${suffix}`))
+        msg.channel.sendMessage(wrap(`Queueing up: ${suffix}`))
         .then(response => {
             // If the suffix doesn't start with 'http', assume it's a search.
 			if (!suffix.toLowerCase().startsWith('http')) {
